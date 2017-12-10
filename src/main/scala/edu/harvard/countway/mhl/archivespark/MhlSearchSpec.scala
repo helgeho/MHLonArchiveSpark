@@ -2,10 +2,11 @@ package edu.harvard.countway.mhl.archivespark
 
 import de.l3s.archivespark.dataspecs.DataSpec
 import de.l3s.archivespark.specific.books.IATxtBookAccessor
+import de.l3s.archivespark.utils.RddUtil
 import edu.harvard.countway.mhl.archivespark.search.{MhlFields, MhlSearchOptions}
 import org.apache.http.client.entity.UrlEncodedFormEntity
 import org.apache.http.client.methods.HttpPost
-import org.apache.http.impl.client.HttpClients
+import org.apache.http.impl.client.SystemDefaultHttpClient
 import org.apache.http.message.BasicNameValuePair
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -16,13 +17,13 @@ import scala.collection.JavaConverters._
 import scala.io.Source
 import scala.util.Try
 
-class MhlSearchSpec private (options: MhlSearchOptions) extends DataSpec[MhlSearchResult, MhlSearchRecord] {
-  val MhlSearchUrl = "http://mhl.countway.harvard.edu/proxy/proxy.php" //"http://localhost:8111/response.json" //"http://mhl.countway.harvard.edu/proxy/proxy.php"
-  val ResultsPerPage = 500
+class MhlSearchSpec private (options: MhlSearchOptions, maxRecords: Int) extends DataSpec[MhlSearchResult, MhlSearchRecord] {
+  import MhlSearchSpec._
 
   override def load(sc: SparkContext, minPartitions: Int): RDD[MhlSearchResult] = {
-    sc.parallelize(1 to minPartitions, minPartitions).flatMap { page =>
-      val client = HttpClients.createDefault
+    val pages = Math.ceil(maxRecords.toDouble / ResultsPerPage).toInt
+    RddUtil.parallelize(sc, pages, minPartitions).flatMap{page =>
+      val client = new SystemDefaultHttpClient()
       val post = new HttpPost(MhlSearchUrl)
       val q = {
         val conjunctiveQuery = if (options.conjunctive) options.query.replace(" ", " AND ") else options.query
@@ -43,7 +44,7 @@ class MhlSearchSpec private (options: MhlSearchOptions) extends DataSpec[MhlSear
         "facet.field" -> "collection",
         "q" -> q,
         "rows" -> ResultsPerPage,
-        "start" -> ((page - 1) * ResultsPerPage),
+        "start" -> (page * ResultsPerPage).max(maxRecords),
         "sort" -> "score desc"
       )
       if (options.languages.nonEmpty) params :+= "fq" -> options.languages.map(l => s"""language:"${l.id}"""").mkString(" OR ")
@@ -65,7 +66,7 @@ class MhlSearchSpec private (options: MhlSearchOptions) extends DataSpec[MhlSear
           }
         }.getOrElse(Seq.empty)
       }.getOrElse(Seq.empty)
-    }.repartition(minPartitions)
+    }
   }
 
   override def parse(result: MhlSearchResult): Option[MhlSearchRecord] = {
@@ -75,5 +76,9 @@ class MhlSearchSpec private (options: MhlSearchOptions) extends DataSpec[MhlSear
 }
 
 object MhlSearchSpec {
-  def apply(options: MhlSearchOptions): MhlSearchSpec = new MhlSearchSpec(options)
+  val MhlSearchUrl = "http://mhl.countway.harvard.edu/proxy/proxy.php"
+  val ResultsPerPage = 100
+  val DefaultMaxRecords = 1000
+
+  def apply(options: MhlSearchOptions, maxRecords: Int = DefaultMaxRecords): MhlSearchSpec = new MhlSearchSpec(options, maxRecords)
 }
