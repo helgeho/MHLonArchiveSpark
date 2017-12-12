@@ -66,7 +66,7 @@ class MhlSearchSpec private (options: MhlSearchOptions, maxRecords: Int) extends
           }
         }.getOrElse(Seq.empty)
       }.getOrElse(Seq.empty)
-    }
+    }.cache
   }
 
   override def parse(result: MhlSearchResult): Option[MhlSearchRecord] = {
