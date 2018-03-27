@@ -44,7 +44,7 @@ class MhlSearchSpec private (options: MhlSearchOptions, maxRecords: Int) extends
         "facet.field" -> "collection",
         "q" -> q,
         "rows" -> ResultsPerPage,
-        "start" -> (page * ResultsPerPage).max(maxRecords),
+        "start" -> (page * ResultsPerPage),
         "sort" -> "score desc"
       )
       if (options.languages.nonEmpty) params :+= "fq" -> options.languages.map(l => s"""language:"${l.id}"""").mkString(" OR ")
